@@ -290,15 +290,6 @@ function toast(msg) {
   t._t = setTimeout(() => t.classList.remove('show'), 1600);
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function getSVGString() {
   return new XMLSerializer().serializeToString(document.getElementById('comic-svg'));
 }
@@ -361,7 +352,12 @@ document.querySelectorAll('#layoutGroup button').forEach(b =>
 
 document.getElementById('btnSvg').onclick = () => {
   const blob = new Blob([getSVGString()], { type: 'image/svg+xml;charset=utf-8' });
-  downloadBlob(blob, 'comic.svg');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'comic.svg';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('SVG сохранён');
 };
 
@@ -369,26 +365,41 @@ document.getElementById('btnPng').onclick = async () => {
   toast('Готовлю PNG...');
   try {
     const blob = await exportPNG();
-    const file = new File([blob], 'comic.png', { type: 'image/png' });
 
-    // 1. Пробуем нативный share-диалог (Android/iOS)
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    // data URL из blob
+    const dataUrl = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+
+    // Android / iOS: нативный метод Telegram
+    const wa = window.Telegram?.WebApp;
+    if (wa?.downloadFile) {
       try {
-        await navigator.share({
-          files: [file],
-          title: 'Мой комикс',
-        });
-        toast('Готово!');
+        wa.downloadFile(
+          { url: dataUrl, file_name: 'comic.png' },
+          (accepted) => {
+            if (accepted) toast('Сохраняю...');
+            else toast('Отменено');
+          }
+        );
         return;
       } catch (e) {
-        // пользователь отменил — тихо игнорируем
-        if (e.name === 'AbortError') return;
-        console.warn('share failed, fallback', e);
+        console.warn('downloadFile threw', e);
       }
     }
 
-    // 2. Fallback — классическое скачивание (десктоп, браузер)
-    downloadBlob(blob, 'comic.png');
+    // Десктоп / браузер — классическое скачивание
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'comic.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast('PNG сохранён');
   } catch (e) {
     console.error(e);
