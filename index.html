@@ -358,18 +358,42 @@ document.getElementById('btnNew').onclick = generateComic;
 document.getElementById('btnStory').onclick = generateFromStory;
 document.querySelectorAll('#layoutGroup button').forEach(b =>
   b.onclick = () => changeLayout(b.dataset.layout));
+
 document.getElementById('btnSvg').onclick = () => {
   const blob = new Blob([getSVGString()], { type: 'image/svg+xml;charset=utf-8' });
   downloadBlob(blob, 'comic.svg');
   toast('SVG сохранён');
 };
+
 document.getElementById('btnPng').onclick = async () => {
   toast('Готовлю PNG...');
   try {
     const blob = await exportPNG();
+    const file = new File([blob], 'comic.png', { type: 'image/png' });
+
+    // 1. Пробуем нативный share-диалог (Android/iOS)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'Мой комикс',
+        });
+        toast('Готово!');
+        return;
+      } catch (e) {
+        // пользователь отменил — тихо игнорируем
+        if (e.name === 'AbortError') return;
+        console.warn('share failed, fallback', e);
+      }
+    }
+
+    // 2. Fallback — классическое скачивание (десктоп, браузер)
     downloadBlob(blob, 'comic.png');
     toast('PNG сохранён');
-  } catch (e) { console.error(e); toast('Не получилось :('); }
+  } catch (e) {
+    console.error(e);
+    toast('Не получилось :(');
+  }
 };
 
 changeLayout('2x2');
